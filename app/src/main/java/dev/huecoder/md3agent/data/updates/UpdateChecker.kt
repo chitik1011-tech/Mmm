@@ -49,8 +49,8 @@ class UpdateChecker(private val http: HttpClientProvider, installedVersion: Stri
     private data class Asset(val name: String, @SerialName("browser_download_url") val downloadUrl: String)
 
     companion object {
-        const val REPOSITORY_URL = "https://github.com/huecoder/md3-agent"
-        private const val LATEST_RELEASE_URL = "https://api.github.com/repos/huecoder/md3-agent/releases/latest"
+        const val REPOSITORY_URL = "https://github.com/chitik1011-tech/Mmm"
+        private const val LATEST_RELEASE_URL = "https://api.github.com/repos/chitik1011-tech/Mmm/releases/latest"
         private const val GITHUB_JSON = "application/vnd.github+json"
         private const val HTTP_NOT_FOUND = 404
         private const val APK_SUFFIX = ".apk"
