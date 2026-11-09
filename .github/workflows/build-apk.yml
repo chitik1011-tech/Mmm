@@ -44,13 +44,20 @@ jobs:
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk vishna-agent-debug.apk
+      - name: Rename and validate APK
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk vishna-agent-debug.apk
+          unzip -t vishna-agent-debug.apk
+          ls -lh vishna-agent-debug.apk
+          sha256sum vishna-agent-debug.apk | tee vishna-agent-debug.apk.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: vishna-agent-debug-apk
-          path: vishna-agent-debug.apk
+          path: |
+            vishna-agent-debug.apk
+            vishna-agent-debug.apk.sha256
           retention-days: 14
           if-no-files-found: error
+          compression-level: 0
