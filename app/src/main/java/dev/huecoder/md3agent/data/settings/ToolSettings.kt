@@ -1,0 +1,244 @@
+package dev.huecoder.md3agent.data.settings
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+enum class ToolPermission { OFF, ASK, AUTO }
+
+@Serializable
+enum class ToolExecutionMode { ASK, AUTO, FULL_ACCESS }
+
+@Serializable
+data class ToolSettings(
+    @SerialName("disabledTools") private val legacyDisabled: Set<String> = emptySet(),
+    val permissions: Map<String, ToolPermission> = emptyMap(),
+    val executionMode: ToolExecutionMode? = null,
+    val weather: WeatherSettings = WeatherSettings(),
+    val search: SearchSettings = SearchSettings(),
+    val fetch: FetchSettings = FetchSettings(),
+    val access: AccessSettings = AccessSettings(),
+    val mcpServers: List<McpServer> = emptyList(),
+    val memory: MemorySettings = MemorySettings(),
+    val phoneUse: PhoneUseSettings = PhoneUseSettings(),
+) {
+    fun permission(toolName: String, default: ToolPermission): ToolPermission = permissions[toolName] ?: default
+
+    fun withPermission(toolName: String, permission: ToolPermission) = copy(permissions = permissions + (toolName to permission))
+
+    fun migrated(): ToolSettings {
+        val withPermissions =
+            if (legacyDisabled.isEmpty()) this else copy(legacyDisabled = emptySet(), permissions = legacyDisabled.associateWith { ToolPermission.OFF } + permissions)
+        return withPermissions.copy(phoneUse = withPermissions.phoneUse.withCurrentPanelDefaults())
+    }
+}
+
+@Serializable
+data class WeatherSettings(
+    val forecastUrl: String = DEFAULT_FORECAST_URL,
+    val geocodingUrl: String = DEFAULT_GEOCODING_URL,
+) {
+    companion object {
+        const val DEFAULT_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+        const val DEFAULT_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+    }
+}
+
+@Serializable
+enum class SearchBackend { HTML_SCRAPE, SEARXNG, BRAVE_API, CUSTOM }
+
+@Serializable
+data class SearchSettings(
+    val backend: SearchBackend = SearchBackend.HTML_SCRAPE,
+    val searxngUrl: String = "",
+    val apiKey: String = "",
+    val custom: CustomSearch = CustomSearch(),
+)
+
+@Serializable
+enum class SearchMethod { GET, POST }
+
+@Serializable
+data class CustomSearch(
+    val url: String = "",
+    val method: SearchMethod = SearchMethod.POST,
+    val apiKey: String = "",
+    val headers: List<HeaderEntry> = emptyList(),
+    val body: String = "",
+    val resultsPath: String = DEFAULT_RESULTS_PATH,
+    val titleField: String = DEFAULT_TITLE_FIELD,
+    val linkField: String = DEFAULT_LINK_FIELD,
+    val snippetFields: String = DEFAULT_SNIPPET_FIELDS,
+) {
+    val needsKey: Boolean
+        get() = listOf(url, body).plus(headers.map { it.value }).any { KEY_PLACEHOLDER in it }
+
+    val isComplete: Boolean
+        get() = url.isNotBlank() && (method == SearchMethod.GET || body.isNotBlank()) && (!needsKey || apiKey.isNotBlank())
+
+    companion object {
+        const val QUERY_PLACEHOLDER = "{query}"
+        const val COUNT_PLACEHOLDER = "{count}"
+        const val KEY_PLACEHOLDER = "{key}"
+        const val DEFAULT_RESULTS_PATH = "results"
+        const val DEFAULT_TITLE_FIELD = "title"
+        const val DEFAULT_LINK_FIELD = "url"
+        const val DEFAULT_SNIPPET_FIELDS = "snippet,content,description,text,highlights"
+    }
+}
+
+@Serializable
+enum class FetchBackend { DIRECT, JINA_READER, CUSTOM }
+
+@Serializable
+data class FetchSettings(
+    val backend: FetchBackend = FetchBackend.JINA_READER,
+    val jinaApiKey: String = "",
+    val customUrl: String = "",
+    val customApiKey: String = "",
+) {
+    companion object {
+        const val URL_PLACEHOLDER = "{url}"
+        const val JINA_READER_URL = "https://r.jina.ai/$URL_PLACEHOLDER"
+    }
+}
+
+@Serializable
+enum class ShellMode { SANDBOX, TERMUX, SHIZUKU, ROOT }
+
+@Serializable
+enum class FileScope { APP, SHARED_STORAGE, ROOT }
+
+@Serializable
+data class AccessSettings(val shell: ShellMode = ShellMode.SANDBOX, val files: FileScope = FileScope.APP) {
+    val usesRoot: Boolean get() = shell == ShellMode.ROOT || files == FileScope.ROOT
+}
+
+@Serializable
+data class McpServer(
+    val id: String,
+    val name: String,
+    val url: String,
+    val apiKey: String = "",
+    val headers: List<HeaderEntry> = emptyList(),
+    val enabled: Boolean = true,
+    val oauth: McpOAuthSession? = null,
+    val iconKey: String? = null,
+    val colorKey: String? = null,
+) {
+    fun requestHeaders(): List<HeaderEntry> =
+        headers.filter { it.name.isNotBlank() } + listOfNotNull(apiKey.trim().takeIf { it.isNotEmpty() }?.let { HeaderEntry(AUTHORIZATION, "Bearer $it") })
+
+    fun withoutTokenValues(): McpServer = copy(oauth = oauth?.copy(accessToken = "", refreshToken = null, expiresAt = null))
+
+    private companion object {
+        const val AUTHORIZATION = "Authorization"
+    }
+}
+
+@Serializable
+data class McpOAuthSession(
+    val clientId: String,
+    val clientSecret: String? = null,
+    val tokenEndpoint: String,
+    val accessToken: String,
+    val refreshToken: String? = null,
+    val expiresAt: Long? = null,
+)
+
+@Serializable
+enum class EmbeddingKind { OFF, GEMINI, OPENAI }
+
+@Serializable
+data class MemorySettings(
+    val embeddingKind: EmbeddingKind = EmbeddingKind.OFF,
+    val embeddingBaseUrl: String = "",
+    val embeddingApiKey: String = "",
+    val embeddingModel: String = "",
+) {
+    val canListModels: Boolean
+        get() = embeddingKind != EmbeddingKind.OFF && embeddingApiKey.isNotBlank() && baseUrl.isNotBlank()
+
+    val embeddingsReady: Boolean
+        get() = canListModels && model.isNotBlank()
+
+    val model: String
+        get() = embeddingModel.trim().ifEmpty { if (embeddingKind == EmbeddingKind.GEMINI) GEMINI_MODEL else "" }
+
+    val embeddingSignature: String
+        get() = "$embeddingKind:$model"
+
+    val baseUrl: String
+        get() = embeddingBaseUrl.trim().ifEmpty { if (embeddingKind == EmbeddingKind.GEMINI) GEMINI_BASE_URL else "" }
+
+    fun asEndpointProfile() = ProviderProfile(
+        id = ENDPOINT_ID,
+        name = ENDPOINT_ID,
+        baseUrl = baseUrl.removeSuffix("/").removeSuffix("/embeddings"),
+        apiKey = embeddingApiKey,
+        format = if (embeddingKind == EmbeddingKind.GEMINI) ApiFormat.GEMINI else ApiFormat.OPENAI,
+    )
+
+    companion object {
+        private const val ENDPOINT_ID = "embeddings"
+        const val GEMINI_MODEL = "gemini-embedding-2"
+        const val GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+        const val GEMINI_KEY_URL = "https://aistudio.google.com/apikey"
+    }
+}
+
+@Serializable
+enum class TouchGuard { BLOCK, OBSERVE }
+
+@Serializable
+enum class TapSound { OFF, SOFT_A, SOFT_B, MOUSE }
+
+@Serializable
+enum class AgentPlacement { BESIDE_CURSOR, ON_CURSOR, HIDDEN }
+
+@Serializable
+enum class CursorShape { BIBATA_MODERN, BIBATA_ORIGINAL, ROUNDED }
+
+@Serializable
+data class PhoneUseSettings(
+    val overlay: Boolean = true,
+    val startGlow: Boolean = true,
+    val helpSound: Boolean = true,
+    val touchGuard: TouchGuard = TouchGuard.BLOCK,
+    val keepAwake: Boolean = true,
+    val dimScreen: Boolean = false,
+    val panelOpacity: Float = DEFAULT_PANEL_OPACITY,
+    val panelWidth: Float = DEFAULT_PANEL_WIDTH,
+    val panelHeight: Float = DEFAULT_PANEL_HEIGHT,
+    val cursorSize: Float = DEFAULT_CURSOR_SIZE,
+    val cursorShape: CursorShape = CursorShape.BIBATA_MODERN,
+    val cursorCaption: Boolean = true,
+    val cursorTrail: Boolean = false,
+    val agentPlacement: AgentPlacement = AgentPlacement.BESIDE_CURSOR,
+    val tapSound: TapSound = TapSound.SOFT_A,
+    val soundVolume: Float = DEFAULT_SOUND_VOLUME,
+    val pythonControl: Boolean = false,
+) {
+    fun withCurrentPanelDefaults(): PhoneUseSettings =
+        if (panelOpacity == FIRST_BUILD_PANEL_OPACITY && panelWidth == FIRST_BUILD_PANEL_WIDTH) {
+            copy(panelOpacity = DEFAULT_PANEL_OPACITY, panelWidth = DEFAULT_PANEL_WIDTH)
+        } else {
+            this
+        }
+
+    companion object {
+        const val FIRST_BUILD_PANEL_OPACITY = 0.82f
+        const val FIRST_BUILD_PANEL_WIDTH = 0.94f
+        const val MIN_PANEL_OPACITY = 0.3f
+        const val DEFAULT_PANEL_OPACITY = 1f
+        const val MIN_PANEL_WIDTH = 0.6f
+        const val DEFAULT_PANEL_WIDTH = 0.75f
+        const val MIN_PANEL_HEIGHT = 0.15f
+        const val MAX_PANEL_HEIGHT = 0.5f
+        const val DEFAULT_PANEL_HEIGHT = 0.3f
+        const val MIN_CURSOR_SIZE = 0.7f
+        const val MAX_CURSOR_SIZE = 1.8f
+        const val DEFAULT_CURSOR_SIZE = 1f
+        const val DEFAULT_SOUND_VOLUME = 0.6f
+    }
+}

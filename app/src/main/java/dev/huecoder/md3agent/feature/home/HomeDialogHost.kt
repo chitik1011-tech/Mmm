@@ -1,0 +1,88 @@
+package dev.huecoder.md3agent.feature.home
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import dev.huecoder.md3agent.R
+
+sealed interface HomeDialog {
+    data class Trashed(val chatId: String) : HomeDialog
+    data class RenameChat(val chatId: String) : HomeDialog
+    data class Move(val chatIds: Set<String>) : HomeDialog
+    data class NewFolder(val moving: Set<String> = emptySet()) : HomeDialog
+    data class FolderMenu(val folderId: String) : HomeDialog
+    data class EditFolder(val folderId: String) : HomeDialog
+    data class DeleteForever(val chatIds: Set<String>) : HomeDialog
+    data object EmptyTrash : HomeDialog
+}
+
+@Composable
+fun HomeDialogHost(dialog: HomeDialog?, state: HomeUiState, viewModel: HomeViewModel, onChange: (HomeDialog?) -> Unit) {
+    val dismiss = { onChange(null) }
+    val chatTitle = { id: String -> state.groups.firstNotNullOfOrNull { group -> group.chats.firstOrNull { it.id == id } }?.chat?.title }
+    val folder = { id: String -> state.folders.firstOrNull { it.id == id } }
+    when (dialog) {
+        null -> Unit
+        is HomeDialog.Trashed -> TrashedChatSheet(
+            title = chatTitle(dialog.chatId).orEmpty(),
+            onSelect = { viewModel.toggleSelection(dialog.chatId); dismiss() },
+            onAction = { action -> onChange(viewModel.perform(action, setOf(dialog.chatId))) },
+            onDismiss = dismiss,
+        )
+        is HomeDialog.RenameChat -> NameDialog(
+            title = stringResource(R.string.home_rename_title),
+            label = stringResource(R.string.home_chat_name),
+            initial = chatTitle(dialog.chatId).orEmpty(),
+            confirmLabel = stringResource(R.string.settings_save),
+            onConfirm = { viewModel.rename(dialog.chatId, it); dismiss() },
+            onDismiss = dismiss,
+        )
+        is HomeDialog.Move -> MoveToFolderSheet(
+            folders = state.folders,
+            onMove = { viewModel.move(dialog.chatIds, it); dismiss() },
+            onNewFolder = { onChange(HomeDialog.NewFolder(dialog.chatIds)) },
+            onDismiss = dismiss,
+        )
+        is HomeDialog.NewFolder -> FolderEditorSheet(
+            folder = null,
+            onSave = { name, look -> viewModel.createFolder(name, look, dialog.moving); dismiss() },
+            onDismiss = dismiss,
+        )
+        is HomeDialog.FolderMenu -> folder(dialog.folderId)?.let { target ->
+            FolderActionsSheet(
+                folder = target,
+                onEdit = { onChange(HomeDialog.EditFolder(target.id)) },
+                onDelete = { viewModel.deleteFolder(target.id); dismiss() },
+                onDismiss = dismiss,
+            )
+        }
+        is HomeDialog.EditFolder -> folder(dialog.folderId)?.let { target ->
+            FolderEditorSheet(
+                folder = target,
+                onSave = { name, look -> viewModel.updateFolder(target.id, name, look); dismiss() },
+                onDismiss = dismiss,
+            )
+        }
+        is HomeDialog.DeleteForever -> DeleteChatsDialog(
+            count = dialog.chatIds.size,
+            onConfirm = { viewModel.deleteForever(dialog.chatIds); dismiss() },
+            onDismiss = dismiss,
+        )
+        HomeDialog.EmptyTrash -> DeleteChatsDialog(
+            count = state.visibleIds.size,
+            onConfirm = { viewModel.emptyTrash(); dismiss() },
+            onDismiss = dismiss,
+        )
+    }
+}
+
+fun HomeViewModel.perform(action: RowAction, chatIds: Set<String>): HomeDialog? {
+    when (action) {
+        RowAction.MOVE -> return HomeDialog.Move(chatIds)
+        RowAction.DELETE_FOREVER -> return HomeDialog.DeleteForever(chatIds)
+        RowAction.TRASH -> trash(chatIds)
+        RowAction.ARCHIVE -> archive(chatIds)
+        RowAction.UNARCHIVE -> unarchive(chatIds)
+        RowAction.RESTORE -> restore(chatIds)
+    }
+    return null
+}

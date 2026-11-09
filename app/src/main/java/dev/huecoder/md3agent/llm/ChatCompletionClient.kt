@@ -1,0 +1,114 @@
+package dev.huecoder.md3agent.llm
+
+import dev.huecoder.md3agent.data.settings.ProviderProfile
+import dev.huecoder.md3agent.llm.wire.ChatRequest
+import dev.huecoder.md3agent.llm.wire.ChatStream
+import dev.huecoder.md3agent.llm.wire.ChatWire
+import dev.huecoder.md3agent.llm.wire.wireJson
+import dev.huecoder.md3agent.llm.auth.ChatGPTOAuth
+import dev.huecoder.md3agent.net.HttpClientProvider
+import dev.huecoder.md3agent.net.executeCancellable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import okhttp3.Response
+import java.io.IOException
+
+class ChatCompletionClient(
+    private val httpClients: HttpClientProvider,
+    private val diagnostics: StreamDiagnostics = NoStreamDiagnostics,
+    private val chatGPTOAuth: ChatGPTOAuth? = null,
+) {
+    fun stream(
+        provider: ProviderProfile,
+        model: String,
+        turns: List<ChatTurn>,
+        tools: List<ToolSpec> = emptyList(),
+        options: CompletionOptions = CompletionOptions(),
+    ): Flow<CompletionEvent> = flow {
+        val requestProvider = if (provider.format == dev.huecoder.md3agent.data.settings.ApiFormat.CHATGPT) chatGPTOAuth?.freshProvider(provider) ?: provider else provider
+        val wire = ChatWire.of(requestProvider.format)
+        val request = wire.request(ProviderEndpoint(requestProvider), ChatRequest(model, turns, tools, options))
+        val call = httpClients.current().newCall(request)
+        val trace = StreamTrace()
+        try {
+            call.executeCancellable { response ->
+                if (!response.isSuccessful) throw httpError(response)
+                trace.onResponse()
+                emitServerSentEvents(response, wire.newStream(), trace)
+            }
+        } catch (e: IOException) {
+            if (call.isCanceled()) throw CancellationException("Stream cancelled", e)
+            val failure = trace.failure(e)
+            diagnostics.failed(failure)
+            throw ProviderException.Network(e, failure.kind)
+        }
+    }.flowOn(Dispatchers.IO)
+
+    private suspend fun FlowCollector<CompletionEvent>.emitServerSentEvents(response: Response, stream: ChatStream, trace: StreamTrace) {
+        val source = response.body.source()
+        var finished = false
+        var usageSeen = false
+        while (!(finished && usageSeen)) {
+            val line = source.readUtf8Line()
+            if (line == null) {
+                if (!finished) diagnostics.endedWithoutFinish(trace.timings())
+                break
+            }
+            trace.onChunk()
+            if (!line.startsWith(SSE_DATA_PREFIX)) continue
+            val data = line.removePrefix(SSE_DATA_PREFIX).trim()
+            if (data == SSE_DONE) break
+            if (data.isEmpty()) continue
+            for (event in stream.events(parseChunk(data))) {
+                emit(event)
+                if (event is CompletionEvent.Finished) finished = true
+                if (event is CompletionEvent.Usage) usageSeen = true
+            }
+        }
+        if (!finished) throw IOException("Response stream ended before completion")
+    }
+
+    private fun parseChunk(data: String): JsonObject {
+        val chunk = try {
+            wireJson.parseToJsonElement(data).jsonObject
+        } catch (e: SerializationException) {
+            throw ProviderException.MalformedResponse("Could not parse response chunk: ${data.take(ERROR_PREVIEW_CHARS)}")
+        } catch (e: IllegalArgumentException) {
+            throw ProviderException.MalformedResponse("Response chunk is not a JSON object: ${data.take(ERROR_PREVIEW_CHARS)}")
+        }
+        chunk["error"]?.let { throw ProviderException.Http(code = 0, message = errorMessageOf(chunk.toString())) }
+        return chunk
+    }
+
+    private fun httpError(response: Response): ProviderException.Http {
+        val body = response.body.string()
+        return ProviderException.Http(response.code, "HTTP ${response.code}: ${errorMessageOf(body)}")
+    }
+
+    private fun errorMessageOf(body: String): String {
+        val parsed = runCatching { wireJson.parseToJsonElement(body) }.getOrNull()
+        val root = (parsed as? JsonObject) ?: ((parsed as? JsonArray)?.firstOrNull() as? JsonObject)
+        val message = when (val error = root?.get("error")) {
+            is JsonObject -> (error["message"] as? JsonPrimitive)?.contentOrNull
+            is JsonPrimitive -> error.contentOrNull
+            else -> (root?.get("message") as? JsonPrimitive)?.contentOrNull
+        }
+        return message ?: body.take(ERROR_PREVIEW_CHARS).ifBlank { "empty response" }
+    }
+
+    private companion object {
+        const val SSE_DATA_PREFIX = "data:"
+        const val SSE_DONE = "[DONE]"
+        const val ERROR_PREVIEW_CHARS = 300
+    }
+}

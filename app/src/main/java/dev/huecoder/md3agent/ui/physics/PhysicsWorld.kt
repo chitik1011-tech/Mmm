@@ -1,0 +1,223 @@
+package dev.huecoder.md3agent.ui.physics
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import org.dyn4j.dynamics.Body
+import org.dyn4j.dynamics.ContinuousDetectionMode
+import org.dyn4j.dynamics.contact.Contact
+import org.dyn4j.dynamics.joint.PinJoint
+import org.dyn4j.geometry.Convex
+import org.dyn4j.geometry.Geometry
+import org.dyn4j.geometry.MassType
+import org.dyn4j.geometry.Vector2
+import org.dyn4j.geometry.hull.GiftWrap
+import org.dyn4j.world.ContactCollisionData
+import org.dyn4j.world.World
+import org.dyn4j.world.listener.ContactListenerAdapter
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+data class Material(val restitution: Double, val friction: Double, val density: Double = 1.0) {
+    companion object {
+        val Soft = Material(restitution = 0.35, friction = 0.6)
+        val Bouncy = Material(restitution = 0.5, friction = 0.4)
+        val Grippy = Material(restitution = 0.25, friction = 0.9)
+    }
+}
+
+data class Impact(val first: Body, val second: Body, val point: Offset, val speed: Float)
+
+data class Spring(val frequency: Double, val damping: Double, val maxForcePerKilogram: Double) {
+    companion object {
+        val Grab = Spring(frequency = 6.0, damping = 0.7, maxForcePerKilogram = 1_500.0)
+    }
+}
+
+class PhysicsWorld(private val pixelsPerMeter: Float, gravity: Double = CARTOON_GRAVITY, stepSeconds: Double = DEFAULT_STEP_SECONDS) {
+    val gravityPixels: Float = (gravity * pixelsPerMeter).toFloat()
+
+    fun pointGravity(direction: Offset) {
+        val length = direction.getDistance().takeIf { it > 0f } ?: return
+        val strength = gravityPixels / pixelsPerMeter / length
+        world.setGravity((direction.x * strength).toDouble(), (direction.y * strength).toDouble())
+        world.bodies.forEach { it.setAtRest(false) }
+    }
+
+    fun bodyAt(point: Offset): Body? {
+        val probe = Vector2(point.x.meters, point.y.meters)
+        return world.bodies.lastOrNull { !it.mass.isInfinite && it.contains(probe) }
+    }
+
+    private val world = World<Body>().apply {
+        setGravity(0.0, gravity)
+        settings.maximumTranslation = MAX_TRANSLATION_METERS
+        settings.stepFrequency = stepSeconds
+        settings.continuousDetectionMode = ContinuousDetectionMode.BULLETS_ONLY
+    }
+    private val maxStepsPerFrame = maxOf(1, (MAX_FRAME_SECONDS / stepSeconds).roundToInt())
+    private var onImpact: (Impact) -> Unit = {}
+
+    init {
+        world.addContactListener(object : ContactListenerAdapter<Body>() {
+            override fun begin(collision: ContactCollisionData<Body>, contact: Contact) {
+                val constraint = collision.contactConstraint
+                val first = constraint.body1
+                val second = constraint.body2
+                val closing = first.linearVelocity.difference(second.linearVelocity).dot(constraint.normal)
+                onImpact(Impact(first, second, contact.point.toPixels(), abs(closing).toFloat() * pixelsPerMeter))
+            }
+        })
+    }
+
+    fun onImpact(listener: (Impact) -> Unit) {
+        onImpact = listener
+    }
+
+    fun addWall(rect: Rect, material: Material = Material.Soft): Body = Body().apply {
+        addFixture(Geometry.createRectangle(rect.width.meters, rect.height.meters), 1.0, material.friction, material.restitution)
+        setMass(MassType.INFINITE)
+        translate(rect.center.x.meters, rect.center.y.meters)
+        world.addBody(this)
+    }
+
+    fun addBall(center: Offset, radius: Float, material: Material): Body =
+        addBody(center, Geometry.createCircle(radius.meters), material)
+
+    fun addHull(center: Offset, outline: List<Offset>, material: Material): Body {
+        val hull = GiftWrap().generate(*outline.map { Vector2(it.x.meters, it.y.meters) }.toTypedArray())
+        return addBody(center, Geometry.createPolygon(*hull), material)
+    }
+
+    fun addOutline(
+        center: Offset,
+        parts: List<List<Offset>>,
+        size: Float,
+        material: Material,
+        isStatic: Boolean = false,
+        isBullet: Boolean = false,
+        lockRotation: Boolean = false,
+    ): Body =
+        Body().apply {
+            addParts(parts, size, material)
+            setMass(
+                when {
+                    isStatic -> MassType.INFINITE
+                    lockRotation -> MassType.FIXED_ANGULAR_VELOCITY
+                    else -> MassType.NORMAL
+                },
+            )
+            setBullet(isBullet)
+            translate(center.x.meters, center.y.meters)
+            world.addBody(this)
+        }
+
+    fun replaceOutline(body: Body, parts: List<List<Offset>>, size: Float, material: Material) {
+        val massType = body.mass.type
+        body.removeAllFixtures()
+        body.addParts(parts, size, material)
+        body.setMass(massType)
+    }
+
+    fun remove(body: Body) {
+        world.removeBody(body)
+    }
+
+    fun step(seconds: Float) {
+        world.update(seconds.coerceAtMost(MAX_FRAME_SECONDS).toDouble(), maxStepsPerFrame)
+    }
+
+    fun position(body: Body): Offset = body.worldCenter.toPixels()
+
+    fun origin(body: Body): Offset = Offset(body.transform.translationX.toFloat(), body.transform.translationY.toFloat()) * pixelsPerMeter
+
+    fun angle(body: Body): Float = body.transform.rotationAngle.toFloat()
+
+    fun velocity(body: Body): Offset = body.linearVelocity.toPixels()
+
+    fun setVelocity(body: Body, pixelsPerSecond: Offset) {
+        body.setLinearVelocity(pixelsPerSecond.x.meters, pixelsPerSecond.y.meters)
+        body.setAtRest(false)
+    }
+
+    fun moveTo(body: Body, center: Offset, angle: Double = 0.0) {
+        body.transform.identity()
+        body.rotate(angle)
+        body.translate(center.x.meters, center.y.meters)
+        body.setLinearVelocity(0.0, 0.0)
+        body.angularVelocity = 0.0
+        body.setAtRest(false)
+    }
+
+    fun place(body: Body, center: Offset, angle: Double) {
+        body.transform.setRotation(angle)
+        body.transform.setTranslation(center.x.meters, center.y.meters)
+        world.broadphaseDetector.update(body)
+    }
+
+    fun keepOnLine(body: Body, anchor: Offset, direction: Offset) {
+        val offset = origin(body) - anchor
+        val lateral = offset - direction * (offset.x * direction.x + offset.y * direction.y)
+        body.translate(-lateral.x.meters, -lateral.y.meters)
+        val velocity = velocity(body)
+        setVelocity(body, direction * (velocity.x * direction.x + velocity.y * direction.y))
+        world.broadphaseDetector.update(body)
+    }
+
+    fun driveSpin(body: Body, radiansPerSecond: Double, maxAcceleration: Double) {
+        val acceleration = ((radiansPerSecond - body.angularVelocity) * SPIN_RESPONSE).coerceIn(-maxAcceleration, maxAcceleration)
+        body.applyTorque(acceleration * body.mass.inertia)
+    }
+
+    fun grab(body: Body, at: Offset, spring: Spring = Spring.Grab): Grab = Grab(body, at, spring)
+
+    inner class Grab internal constructor(val body: Body, at: Offset, spring: Spring) {
+        private val joint = PinJoint(body, Vector2(at.x.meters, at.y.meters)).apply {
+            isSpringEnabled = true
+            isSpringDamperEnabled = true
+            springFrequency = spring.frequency
+            springDampingRatio = spring.damping
+            maximumSpringForce = spring.maxForcePerKilogram * body.mass.mass
+            isMaximumSpringForceEnabled = true
+        }
+
+        init {
+            world.addJoint(joint)
+            body.setAtRest(false)
+        }
+
+        fun moveTo(target: Offset) {
+            joint.setTarget(target.x.meters, target.y.meters)
+            body.setAtRest(false)
+        }
+
+        fun release() {
+            world.removeJoint(joint)
+        }
+    }
+
+    private fun addBody(center: Offset, shape: Convex, material: Material): Body = Body().apply {
+        addFixture(shape, material.density, material.friction, material.restitution)
+        setMass(MassType.NORMAL)
+        translate(center.x.meters, center.y.meters)
+        world.addBody(this)
+    }
+
+    private fun Body.addParts(parts: List<List<Offset>>, size: Float, material: Material) {
+        parts.forEach { part ->
+            val corners = part.map { Vector2((it.x * size).meters, (it.y * size).meters) }.toTypedArray()
+            addFixture(Geometry.createPolygon(*corners), material.density, material.friction, material.restitution)
+        }
+    }
+
+    private val Float.meters: Double get() = (this / pixelsPerMeter).toDouble()
+
+    private fun Vector2.toPixels() = Offset((x * pixelsPerMeter).toFloat(), (y * pixelsPerMeter).toFloat())
+
+    private companion object {
+        const val CARTOON_GRAVITY = 24.0
+        const val DEFAULT_STEP_SECONDS = 1.0 / 60.0
+        const val MAX_FRAME_SECONDS = 1f / 30f
+        const val MAX_TRANSLATION_METERS = 4.0
+        const val SPIN_RESPONSE = 8.0
+    }
+}
