@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">MD3 Agent</string>
+    <string name="app_name" translatable="false">vishna-agent</string>
     <string name="settings_title">Settings</string>
     <string name="settings_section_assistant">Assistant</string>
     <string name="settings_section_chat">Chat</string>
