@@ -42,12 +42,12 @@ jobs:
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MD3-Agent-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk vishna-agent-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MD3-Agent-debug-apk
-          path: MD3-Agent-debug.apk
+          name: vishna-agent-debug-apk
+          path: vishna-agent-debug.apk
           retention-days: 14
           if-no-files-found: error
