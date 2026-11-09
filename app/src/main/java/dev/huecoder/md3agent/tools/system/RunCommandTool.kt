@@ -23,7 +23,7 @@ class RunCommandTool(private val access: ShellAccess) : Tool {
     override val spec = ToolSpec(
         name = NAME,
         description = "Runs a shell command on the user's phone and returns its exit code, stdout and stderr. " +
-            "Call this tool directly for terminal work. It uses the selected shell without opening a terminal app. " +
+            "Call this tool directly and proactively for terminal, coding, build, package, and filesystem work; do not say terminal access is unavailable when this tool is present. It uses the selected shell without opening a terminal app. " +
             "Each call is a fresh non-interactive process: no TTY, no prompts, state does not carry over between calls. " +
             "Chain steps with && in one command. See the device access notes for which shell runs it and what it can reach.",
         parameters = objectSchema(required = listOf("command")) {
