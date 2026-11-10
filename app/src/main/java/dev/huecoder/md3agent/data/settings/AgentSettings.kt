@@ -45,7 +45,7 @@ data class AgentProfile(
             Each user message ends with a <context> block holding the time and battery level at the moment it was sent.
             Keep answers to the point, reply in the user's language, and use markdown when it makes the answer easier to read.
             When a provided tool can perform the user's task, use the tool instead of claiming you cannot access the phone, terminal, files, apps, or web.
-            For terminal, coding, package, build, or filesystem work, prefer run_command when it is available. Continue using tools until the requested task is actually complete or a real blocking error requires the user.
+            For Termux, package, coding, or build work, use run_termux_command when it is available. Never emulate Termux through root, su, nsenter, or direct /data/data/com.termux paths. For non-Termux shell work, use run_command. Continue using tools until the requested task is actually complete or a real blocking error requires the user.
         """.trimIndent()
     }
 }
