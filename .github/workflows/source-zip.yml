@@ -1,0 +1,45 @@
+name: Source ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - ".github/workflows/source-zip.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Create source ZIP
+        run: |
+          rm -f vishna-agent-source.zip
+          zip -r -9 vishna-agent-source.zip . \
+            -x ".git/*" \
+               ".gradle/*" \
+               "**/.gradle/*" \
+               "build/*" \
+               "**/build/*" \
+               "*.apk" \
+               "*.aab"
+          unzip -t vishna-agent-source.zip
+          sha256sum vishna-agent-source.zip | tee vishna-agent-source.zip.sha256
+          ls -lh vishna-agent-source.zip
+
+      - name: Upload sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishna-agent-source
+          path: |
+            vishna-agent-source.zip
+            vishna-agent-source.zip.sha256
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
