@@ -38,27 +38,56 @@ jobs:
           sed -i 's/\r$//' ./gradlew
           chmod +x ./gradlew
 
+      - name: Restore permanent signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "::error::KEYSTORE_BASE64 secret is missing"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "::error::KEYSTORE_PASSWORD secret is missing"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "::error::KEY_ALIAS secret is missing"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::KEY_PASSWORD secret is missing"; exit 1; }
+          umask 077
+          mkdir -p keystore
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > keystore/release.jks
+          {
+            printf 'storeFile=keystore/release.jks\n'
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > keystore/keystore.properties
+
       - name: Run unit tests
         continue-on-error: true
         run: ./gradlew --no-daemon testDebugUnitTest
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Build signed release APK
+        run: ./gradlew --no-daemon assembleRelease
 
-      - name: Rename and validate APK
+      - name: Validate signature and APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk vishna-agent-debug.apk
-          unzip -t vishna-agent-debug.apk
-          ls -lh vishna-agent-debug.apk
-          sha256sum vishna-agent-debug.apk | tee vishna-agent-debug.apk.sha256
+          cp app/build/outputs/apk/release/app-release.apk vishna-agent.apk
+          unzip -t vishna-agent.apk
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          "$apksigner" verify --verbose --print-certs vishna-agent.apk
+          "$apksigner" verify --print-certs vishna-agent.apk | awk '/certificate SHA-256 digest:/ && !found {print $0; found=1}' | tee vishna-agent.cert.txt
+          sha256sum vishna-agent.apk | tee vishna-agent.apk.sha256
+          ls -lh vishna-agent.apk
 
-      - name: Upload APK
+      - name: Remove signing key
+        if: always()
+        run: rm -rf keystore
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: vishna-agent-debug-apk
+          name: vishna-agent-signed-apk
           path: |
-            vishna-agent-debug.apk
-            vishna-agent-debug.apk.sha256
+            vishna-agent.apk
+            vishna-agent.apk.sha256
+            vishna-agent.cert.txt
           retention-days: 14
           if-no-files-found: error
           compression-level: 0
