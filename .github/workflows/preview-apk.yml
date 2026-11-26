@@ -24,7 +24,14 @@ jobs:
         run: |
           sed -i 's/\r$//' gradlew
           chmod +x gradlew
-          sdkmanager 'platforms;android-37'
+          sdkmanager --list --channel=3 > /tmp/sdk-packages.txt
+          grep -E 'platforms;android-(36|37)' /tmp/sdk-packages.txt || true
+          if grep -Eq '^[[:space:]]*platforms;android-37[[:space:]]*\|' /tmp/sdk-packages.txt; then
+            sdkmanager --channel=3 'platforms;android-37'
+          else
+            sdkmanager --channel=3 'platforms;android-36'
+            sed -i 's/compileSdk = 37/compileSdk = 36/' app/build.gradle.kts
+          fi
       - name: Build ARM64 debug APK
         run: ./gradlew --no-daemon assembleDebug
       - name: Upload APK
