@@ -85,6 +85,23 @@ fun ProviderEditorScreen(providerId: String?, onDone: () -> Unit) {
                     ) }
                 } else {
                     if (current.format == ApiFormat.OPENAI) {
+                        card { shape ->
+                            SettingCard(
+                                icon = MaterialSymbols.Rounded.Key,
+                                title = "ИИШКО Gateway",
+                                summary = "Вход в официальный кабинет через Telegram; затем вставьте выданный API-ключ. Доступ зависит от вашего тарифа и ранга.",
+                                shape = shape,
+                                indentBelow = false,
+                                below = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onClick = {
+                                            viewModel.edit { it.copy(name = "ИИШКО", baseUrl = "https://api.reformboss.com/v1", apiKey = "", headers = emptyList(), chatgptOAuth = null) }
+                                        }) { Text("Настроить ИИШКО") }
+                                        Button(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, "https://reformboss.com/".toUri())) }) { Text("Войти через Telegram / API-ключ") }
+                                    }
+                                },
+                            )
+                        }
                         card { shape -> DeepSeekSetupCard(
                             onConfigure = { viewModel.edit { it.copy(name = "DeepSeek", baseUrl = DEEPSEEK_BASE_URL) } },
                             onOpenKeys = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, DEEPSEEK_KEYS_URL.toUri())) },

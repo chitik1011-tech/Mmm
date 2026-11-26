@@ -63,6 +63,8 @@ import dev.huecoder.md3agent.tools.ShowDiagramTool
 import dev.huecoder.md3agent.tools.ShowUiTool
 import dev.huecoder.md3agent.tools.system.RunCommandTool
 import dev.huecoder.md3agent.tools.system.RunPythonTool
+import dev.huecoder.md3agent.tools.system.RunTermuxCommandTool
+import dev.huecoder.md3agent.tools.system.SubagentsTool
 import dev.huecoder.md3agent.system.health.DeviceHealth
 import dev.huecoder.md3agent.system.health.NetworkWatch
 import dev.huecoder.md3agent.system.health.WorkKeepAlive
@@ -193,6 +195,8 @@ class AppContainer(context: Context) {
             MemoryDeleteTool(memories),
             MemorySearchTool(memories),
             RunCommandTool(shellAccess),
+            RunTermuxCommandTool(shellAccess.termux),
+            SubagentsTool(completions),
             RunPythonTool(python, shellAccess.workspace, phoneControl),
             ListFilesTool(deviceFiles),
             ReadFileTool(deviceFiles, attachments),

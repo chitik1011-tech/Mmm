@@ -28,7 +28,7 @@ class RunCommandTool(private val access: ShellAccess) : Tool {
             "Chain steps with && in one command. See the device access notes for which shell runs it and what it can reach.",
         parameters = objectSchema(required = listOf("command")) {
             stringProperty("command", "Shell command line")
-            integerProperty("timeout_seconds", "How long to wait before killing the command, default $DEFAULT_TIMEOUT_S", 1, MAX_TIMEOUT_S.toInt())
+            integerProperty("timeout_seconds", "How long to wait for the command result, default $DEFAULT_TIMEOUT_S", 1, MAX_TIMEOUT_S.toInt())
         },
     )
 
@@ -47,11 +47,11 @@ class RunCommandTool(private val access: ShellAccess) : Tool {
         val command = arguments.requireString("command")
         val timeoutSeconds = (arguments.optionalInt("timeout_seconds") ?: DEFAULT_TIMEOUT_S.toInt()).toLong().coerceIn(1, MAX_TIMEOUT_S)
         val result = access.shell(settings.access.shell).run(command, timeoutSeconds * MS_PER_SECOND)
-        return ToolOutcome(result.describe(timeoutSeconds), isError = result.exitCode != 0)
+        return ToolOutcome(result.describe(timeoutSeconds), isError = result.timedOut || result.exitCode != 0)
     }
 
     private fun ShellResult.describe(timeoutSeconds: Long): String = buildString {
-        if (timedOut) appendLine("Killed after $timeoutSeconds s without finishing") else appendLine("Exit code: ${exitCode ?: "unknown"}")
+        if (timedOut) appendLine("No result after $timeoutSeconds s; verify whether the command is still running before retrying.") else appendLine("Exit code: ${exitCode ?: "unknown"}")
         if (stdout.isNotEmpty()) append("stdout:\n").appendLine(stdout.clipped())
         if (stderr.isNotEmpty()) append("stderr:\n").appendLine(stderr.clipped())
         if (stdout.isEmpty() && stderr.isEmpty()) appendLine("No output")

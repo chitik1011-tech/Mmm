@@ -26,7 +26,7 @@ class RunTermuxCommandTool(private val termux: TermuxShell) : Tool {
             "This tool is independent of the selected Android shell mode. Never emulate Termux through root, su, nsenter, /data/data/com.termux, or /data/user/0/com.termux when this tool is available.",
         parameters = objectSchema(required = listOf("command")) {
             stringProperty("command", "Command to execute in Termux bash")
-            integerProperty("timeout_seconds", "How long to wait before killing the command, default $DEFAULT_TIMEOUT_S", 1, MAX_TIMEOUT_S.toInt())
+            integerProperty("timeout_seconds", "How long to wait for the command result, default $DEFAULT_TIMEOUT_S", 1, MAX_TIMEOUT_S.toInt())
         },
     )
 
@@ -39,11 +39,11 @@ class RunTermuxCommandTool(private val termux: TermuxShell) : Tool {
         val command = arguments.requireString("command")
         val timeoutSeconds = (arguments.optionalInt("timeout_seconds") ?: DEFAULT_TIMEOUT_S.toInt()).toLong().coerceIn(1, MAX_TIMEOUT_S)
         val result = termux.run(command, timeoutSeconds * MS_PER_SECOND)
-        return ToolOutcome(result.describe(timeoutSeconds), isError = result.exitCode != 0)
+        return ToolOutcome(result.describe(timeoutSeconds), isError = result.timedOut || result.exitCode != 0)
     }
 
     private fun ShellResult.describe(timeoutSeconds: Long): String = buildString {
-        if (timedOut) appendLine("Killed after $timeoutSeconds s without finishing") else appendLine("Exit code: ${exitCode ?: "unknown"}")
+        if (timedOut) appendLine("No result after $timeoutSeconds s; Termux may still be running the command. Do not retry blindly.") else appendLine("Exit code: ${exitCode ?: "unknown"}")
         if (stdout.isNotEmpty()) append("stdout:\n").appendLine(stdout.clipped())
         if (stderr.isNotEmpty()) append("stderr:\n").appendLine(stderr.clipped())
         if (stdout.isEmpty() && stderr.isEmpty()) appendLine("No output")

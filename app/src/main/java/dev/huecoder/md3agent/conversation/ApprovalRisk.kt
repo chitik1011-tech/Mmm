@@ -22,6 +22,7 @@ import dev.huecoder.md3agent.tools.system.RunPythonTool
 object ApprovalRisk {
     private val SENSITIVE_TOOLS = setOf(
         RunCommandTool.NAME,
+        dev.huecoder.md3agent.tools.system.RunTermuxCommandTool.NAME,
         RunPythonTool.NAME,
         WriteFileTool.NAME,
         PhoneScreenTool.NAME,

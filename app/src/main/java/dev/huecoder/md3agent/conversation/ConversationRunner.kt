@@ -164,7 +164,7 @@ class ConversationRunner(
                         failures = 0
                         failedRound = null
                         if (outcome.draft.toolCalls.isEmpty()) return labelLater(chatId, model, current)
-                        val endsTurn = runTools(chatId, outcome.draft, toolSettings)
+                        val endsTurn = runTools(chatId, outcome.draft, toolSettings, model)
                         if (endsTurn) return
                     }
                 }
@@ -253,11 +253,11 @@ class ConversationRunner(
     private fun toolSpecsFor(info: ModelInfo, toolSettings: ToolSettings): List<ToolSpec> =
         if (info.traits.output == ModelOutput.IMAGE || info.toolUse == false) emptyList() else tools.specs(toolSettings)
 
-    private suspend fun runTools(chatId: String, round: StreamingDraft, toolSettings: ToolSettings): Boolean {
+    private suspend fun runTools(chatId: String, round: StreamingDraft, toolSettings: ToolSettings, model: ResolvedModel): Boolean {
         for (call in round.toolCalls) {
             val outcome = if (isApproved(chatId, round, call, toolSettings)) {
                 publish(chatId, round.copy(runningCallIds = setOf(call.id)))
-                if (gate.admit(call.name)) tools.run(call, toolSettings, ToolContext(chatId)) else ToolOutcome.error(LOCKED_REFUSAL)
+                if (gate.admit(call.name)) tools.run(call, toolSettings, ToolContext(chatId, model.provider, model.modelId)) else ToolOutcome.error(LOCKED_REFUSAL)
             } else {
                 ToolOutcome.denied()
             }

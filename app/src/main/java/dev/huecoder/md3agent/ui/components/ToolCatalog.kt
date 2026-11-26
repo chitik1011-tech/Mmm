@@ -130,6 +130,8 @@ object ToolCatalog {
     )
 
     fun of(toolName: String): ToolInfo = known[toolName] ?: when {
+        toolName == "run_termux_command" -> ToolInfo(MaterialSymbols.Rounded.Terminal, UiText.Raw("Termux"), UiText.Raw("Run commands in Termux"), ToolCategory.SYSTEM)
+        toolName == "run_subagents" -> ToolInfo(MaterialSymbols.Rounded.Hub, UiText.Raw("Subagents"), UiText.Raw("Parallel independent model requests"), ToolCategory.ASSISTANT)
         McpTool.isMcpName(toolName) -> ToolInfo(MaterialSymbols.Rounded.Hub, UiText.Raw(McpTool.shortName(toolName)), UiText.Raw(""), ToolCategory.MCP)
         else -> ToolInfo(MaterialSymbols.Rounded.Build, UiText.Raw(toolName), UiText.Raw(""), ToolCategory.OTHER)
     }
