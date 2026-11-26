@@ -11,7 +11,7 @@ import dev.huecoder.md3agent.tools.system.RunCommandTool
 import dev.huecoder.md3agent.tools.system.RunPythonTool
 
 private val PHONE_CONTROL_TOOLS = setOf(PhoneScreenTool.NAME, PhoneScreenshotTool.NAME, PhoneActionTool.NAME, PhoneHandoffTool.NAME)
-private val SHELL_AND_FILES_TOOLS = setOf(RunCommandTool.NAME, RunPythonTool.NAME)
+private val SHELL_AND_FILES_TOOLS = setOf(RunCommandTool.NAME, RunPythonTool.NAME, dev.huecoder.md3agent.tools.system.RunTermuxCommandTool.NAME)
 
 fun ToolSettings.followingMode(previous: ModeSettings, current: ModeSettings): ToolSettings =
     following(PHONE_CONTROL_TOOLS, previous.phoneControl, current.phoneControl)

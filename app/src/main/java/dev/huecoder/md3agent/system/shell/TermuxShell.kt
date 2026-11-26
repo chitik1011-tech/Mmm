@@ -41,18 +41,23 @@ class TermuxShell(private val context: Context) : Shell {
             val registered = AtomicBoolean(true)
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context, intent: Intent) {
-                    if (registered.getAndSet(false)) context.unregisterReceiver(this)
+                    if (!registered.getAndSet(false)) return
+                    context.unregisterReceiver(this)
                     continuation.resume(parseResult(intent.getBundleExtra(EXTRA_RESULT)))
                 }
             }
             ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
-            continuation.invokeOnCancellation { if (registered.getAndSet(false)) context.unregisterReceiver(receiver) }
             val callback = PendingIntent.getBroadcast(
                 context,
                 requestCodes.incrementAndGet(),
                 Intent(action).setPackage(context.packageName),
                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_ONE_SHOT,
             )
+            continuation.invokeOnCancellation {
+                callback.cancel()
+                if (registered.getAndSet(false)) context.unregisterReceiver(receiver)
+            }
+            if (!continuation.isActive) return@suspendCancellableCoroutine
             try {
                 context.startService(runIntent(command, callback))
             } catch (e: IllegalStateException) {
@@ -107,7 +112,7 @@ class TermuxShell(private val context: Context) : Shell {
     }
 
     private fun startFailure(error: Exception): String =
-        "Termux could not start the command (${error.message ?: error.javaClass.simpleName}). Grant vishna-agent the Termux RUN_COMMAND permission, then in Termux run: $ENABLE_EXTERNAL_APPS. Also allow Termux to run in the background. Root access is separate."
+        "Termux could not start the command (${error.message ?: error.javaClass.simpleName}). Grant MD3 Agent the Termux RUN_COMMAND permission, then in Termux run: $ENABLE_EXTERNAL_APPS. Also allow Termux to run in the background. Root access is separate."
 
     companion object {
         const val PACKAGE = "com.termux"

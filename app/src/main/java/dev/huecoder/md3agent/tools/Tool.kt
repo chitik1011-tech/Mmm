@@ -32,7 +32,11 @@ interface Tool {
     suspend fun execute(arguments: JsonObject, settings: ToolSettings, context: ToolContext): ToolOutcome = execute(arguments, settings)
 }
 
-data class ToolContext(val chatId: String)
+data class ToolContext(
+    val chatId: String,
+    val provider: dev.huecoder.md3agent.data.settings.ProviderProfile? = null,
+    val modelId: String? = null,
+)
 
 interface ContextualTool : Tool {
     override suspend fun execute(arguments: JsonObject, settings: ToolSettings): ToolOutcome =
