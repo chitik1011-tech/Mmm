@@ -18,6 +18,8 @@ jobs:
           cache: gradle
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
       - name: Prepare wrapper and SDK
         run: |
           sed -i 's/\r$//' gradlew

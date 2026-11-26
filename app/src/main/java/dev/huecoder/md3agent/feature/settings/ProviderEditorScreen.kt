@@ -34,7 +34,7 @@ import dev.huecoder.md3agent.ui.components.appViewModel
 
 @Composable
 fun ProviderEditorScreen(providerId: String?, onDone: () -> Unit) {
-    val viewModel = appViewModel(key = "provider-$providerId") { ProviderEditorViewModel(providerId, it.settings, it.modelCatalog, it.applicationScope, it.chatGPTOAuth) }
+    val viewModel = appViewModel(key = "provider-$providerId") { ProviderEditorViewModel(providerId, it.settings, it.modelCatalog, it.applicationScope, it.chatGPTOAuth, it.iishkoSession) }
     val form by viewModel.form.collectAsStateWithLifecycle()
     val isDirty by viewModel.isDirty.collectAsStateWithLifecycle()
     val signInStatus by viewModel.chatGPTSignIn.collectAsStateWithLifecycle()
@@ -89,15 +89,15 @@ fun ProviderEditorScreen(providerId: String?, onDone: () -> Unit) {
                             SettingCard(
                                 icon = MaterialSymbols.Rounded.Key,
                                 title = "ИИШКО Gateway",
-                                summary = "Вход в официальный кабинет через Telegram; затем вставьте выданный API-ключ. Доступ зависит от вашего тарифа и ранга.",
+                                summary = (signInStatus as? ChatGPTSignInStatus.Failed)?.message ?: if (current.iishkoDeviceToken != null) "Устройство подключено" else "Введите API-ключ и сохраните: сервер ИИШКО выдаст пропуск устройства, если разрешит вход.",
                                 shape = shape,
                                 indentBelow = false,
                                 below = {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         OutlinedButton(onClick = {
-                                            viewModel.edit { it.copy(name = "ИИШКО", baseUrl = "https://api.reformboss.com/v1", apiKey = "", headers = emptyList(), chatgptOAuth = null) }
+                                            viewModel.edit { it.copy(name = "ИИШКО", baseUrl = "https://api.reformboss.com/webapp/api/ide/v1", apiKey = "", headers = emptyList(), chatgptOAuth = null, iishkoDeviceToken = null) }
                                         }) { Text("Настроить ИИШКО") }
-                                        Button(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, "https://reformboss.com/".toUri())) }) { Text("Войти через Telegram / API-ключ") }
+                                        Button(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, "https://t.me/iishkogatewaybot".toUri())) }) { Text("Войти через Telegram / API-ключ") }
                                     }
                                 },
                             )

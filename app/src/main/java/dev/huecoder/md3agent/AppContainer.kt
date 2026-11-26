@@ -137,8 +137,9 @@ class AppContainer(context: Context) {
     val keepAlive = WorkKeepAlive(appContext, networkWatch, health)
 
     val chatGPTOAuth = ChatGPTOAuth(httpClients::current, settings)
-    val completions = ChatCompletionClient(httpClients, health.streamDiagnostics(), chatGPTOAuth)
-    val modelCatalogClient = ModelCatalogClient(httpClients, chatGPTOAuth)
+    val iishkoSession = dev.huecoder.md3agent.llm.auth.IishkoSession(httpClients)
+    val completions = ChatCompletionClient(httpClients, health.streamDiagnostics(), chatGPTOAuth, iishkoSession)
+    val modelCatalogClient = ModelCatalogClient(httpClients, chatGPTOAuth, iishkoSession)
     val voiceList = VoiceListClient(httpClients)
     val modelCatalog = ModelCatalog(modelCatalogClient, File(appContext.filesDir, MODEL_CATALOG_DIR))
     val transcriptions = TranscriptionClient(httpClients)

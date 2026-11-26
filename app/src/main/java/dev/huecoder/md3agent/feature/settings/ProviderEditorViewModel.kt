@@ -28,6 +28,7 @@ data class ProviderForm(
     val headers: List<HeaderEntry> = emptyList(),
     val format: ApiFormat = ApiFormat.OPENAI,
     val chatgptOAuth: ChatGPTOAuthSession? = null,
+    val iishkoDeviceToken: String? = null,
 ) {
     fun withFormat(next: ApiFormat) = if (next == ApiFormat.CHATGPT) {
         copy(format = next, name = name.ifBlank { "ChatGPT" }, baseUrl = next.defaultBaseUrl, apiKey = "", headers = emptyList())
@@ -49,6 +50,7 @@ data class ProviderForm(
         extraHeaders = if (format == ApiFormat.CHATGPT) emptyList() else headers.filter { it.name.isNotBlank() },
         format = format,
         chatgptOAuth = chatgptOAuth,
+        iishkoDeviceToken = iishkoDeviceToken.takeIf { format == ApiFormat.OPENAI && baseUrl.trim().trimEnd('/') == dev.huecoder.md3agent.llm.auth.IishkoSession.PROXY },
     )
 }
 
@@ -64,6 +66,7 @@ class ProviderEditorViewModel(
     private val catalog: ModelCatalog,
     private val appScope: CoroutineScope,
     private val chatGPTOAuth: ChatGPTOAuth,
+    private val iishko: dev.huecoder.md3agent.llm.auth.IishkoSession? = null,
 ) : ViewModel() {
     private val draft = FormDraft<ProviderForm>(viewModelScope)
     private val _chatGPTSignIn = MutableStateFlow<ChatGPTSignInStatus>(ChatGPTSignInStatus.Idle)
@@ -87,6 +90,7 @@ class ProviderEditorViewModel(
                     headers = existing.extraHeaders,
                     format = existing.format,
                     chatgptOAuth = existing.chatgptOAuth,
+                    iishkoDeviceToken = existing.iishkoDeviceToken,
                 )
             })
         }
@@ -97,11 +101,26 @@ class ProviderEditorViewModel(
     fun save(onSaved: () -> Unit) {
         val current = draft.current?.takeIf { it.canSave } ?: return
         viewModelScope.launch {
-            val profile = current.toProfile()
-            settings.upsertProvider(profile)
-            draft.markSaved()
-            appScope.launch { catalog.refreshQuietly(profile) }
-            onSaved()
+            if (_chatGPTSignIn.value == ChatGPTSignInStatus.Connecting) return@launch
+            try {
+                var profile = current.toProfile()
+                if (dev.huecoder.md3agent.llm.auth.IishkoSession.isIishko(profile)) {
+                    _chatGPTSignIn.value = ChatGPTSignInStatus.Connecting
+                    val session = iishko ?: error("IISHKO session unavailable")
+                    if (profile.iishkoDeviceToken == null || profile.apiKey.isNotBlank()) profile = session.connect(profile)
+                    else session.freshProvider(profile)
+                }
+                settings.upsertProvider(profile)
+                draft.applyPersisted { it.copy(isNew = false, baseUrl = profile.baseUrl, apiKey = profile.apiKey, iishkoDeviceToken = profile.iishkoDeviceToken) }
+                draft.markSaved()
+                _chatGPTSignIn.value = ChatGPTSignInStatus.Idle
+                appScope.launch { catalog.refreshQuietly(profile) }
+                onSaved()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _chatGPTSignIn.value = ChatGPTSignInStatus.Failed(error.message ?: "Не удалось подключить провайдер")
+            }
         }
     }
 

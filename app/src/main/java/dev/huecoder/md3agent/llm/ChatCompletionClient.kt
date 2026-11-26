@@ -27,6 +27,7 @@ class ChatCompletionClient(
     private val httpClients: HttpClientProvider,
     private val diagnostics: StreamDiagnostics = NoStreamDiagnostics,
     private val chatGPTOAuth: ChatGPTOAuth? = null,
+    private val iishko: dev.huecoder.md3agent.llm.auth.IishkoSession? = null,
 ) {
     fun stream(
         provider: ProviderProfile,
@@ -35,7 +36,7 @@ class ChatCompletionClient(
         tools: List<ToolSpec> = emptyList(),
         options: CompletionOptions = CompletionOptions(),
     ): Flow<CompletionEvent> = flow {
-        val requestProvider = if (provider.format == dev.huecoder.md3agent.data.settings.ApiFormat.CHATGPT) chatGPTOAuth?.freshProvider(provider) ?: provider else provider
+        val requestProvider = if (provider.format == dev.huecoder.md3agent.data.settings.ApiFormat.CHATGPT) chatGPTOAuth?.freshProvider(provider) ?: provider else iishko?.freshProvider(provider) ?: provider
         val wire = ChatWire.of(requestProvider.format)
         val request = wire.request(ProviderEndpoint(requestProvider), ChatRequest(model, turns, tools, options))
         val call = httpClients.current().newCall(request)

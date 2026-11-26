@@ -12,6 +12,7 @@ data class ProviderProfile(
     val extraHeaders: List<HeaderEntry> = emptyList(),
     val format: ApiFormat = ApiFormat.OPENAI,
     val chatgptOAuth: ChatGPTOAuthSession? = null,
+    val iishkoDeviceToken: String? = null,
 )
 
 @Serializable

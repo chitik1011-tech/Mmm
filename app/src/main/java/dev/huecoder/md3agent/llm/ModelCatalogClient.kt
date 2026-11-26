@@ -17,13 +17,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import java.io.IOException
 
-class ModelCatalogClient(private val httpClients: HttpClientProvider, private val chatGPTOAuth: ChatGPTOAuth? = null) {
+class ModelCatalogClient(private val httpClients: HttpClientProvider, private val chatGPTOAuth: ChatGPTOAuth? = null, private val iishko: dev.huecoder.md3agent.llm.auth.IishkoSession? = null) {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun listModels(provider: ProviderProfile): List<String> = listModelInfo(provider).map { it.id }
 
     suspend fun listModelInfo(provider: ProviderProfile, withDetails: Boolean = false): List<ModelInfo> = withContext(Dispatchers.IO) {
-        val requestProvider = if (provider.format == ApiFormat.CHATGPT) chatGPTOAuth?.freshProvider(provider) ?: provider else provider
+        val requestProvider = if (provider.format == ApiFormat.CHATGPT) chatGPTOAuth?.freshProvider(provider) ?: provider else iishko?.freshProvider(provider) ?: provider
         val endpoint = ProviderEndpoint(requestProvider)
         val url = endpoint.url(MODELS_PATH).newBuilder().apply {
             when (provider.format) {
