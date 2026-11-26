@@ -26,6 +26,11 @@ jobs:
           chmod +x gradlew
           sdkmanager --channel=3 'platforms;android-37.0' 'build-tools;37.0.0'
           ls "$ANDROID_HOME/platforms"
+      - name: Check Kotlin artifact availability
+        run: |
+          for base in https://repo.maven.apache.org/maven2 https://plugins.gradle.org/m2; do
+            curl -L -sS -o /dev/null -w '%{http_code} %{url_effective}\n' "$base/org/jetbrains/kotlin/plugin/compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin/2.4.21/org.jetbrains.kotlin.plugin.compose.gradle.plugin-2.4.21.pom" || true
+          done
       - name: Build ARM64 debug APK
         run: ./gradlew --no-daemon --stacktrace assembleDebug
       - name: Upload APK
