@@ -6,6 +6,8 @@ import dev.huecoder.md3agent.data.settings.ProviderProfile
 import dev.huecoder.md3agent.llm.ProviderException
 import dev.huecoder.md3agent.net.HttpClientProvider
 import dev.huecoder.md3agent.net.executeCancellable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -63,13 +65,13 @@ class IishkoSession(private val http: HttpClientProvider) {
         }
     }
 
-    private suspend fun post(path: String, payload: JsonObject, bearer: String? = null): JsonObject {
+    private suspend fun post(path: String, payload: JsonObject, bearer: String? = null): JsonObject = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("$ACCOUNT/$path")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .header("Accept", "application/json")
             .apply { if (bearer != null) header("Authorization", "Bearer $bearer") }
             .build()
-        return http.current().newBuilder().followRedirects(false).followSslRedirects(false).build()
+        http.current().newBuilder().followRedirects(false).followSslRedirects(false).build()
             .newCall(request).executeCancellable { response ->
                 if (!response.isSuccessful) throw ProviderException.Http(response.code, "ИИШКО: сервер отклонил запрос ($path, HTTP ${response.code})")
                 Json.parseToJsonElement(response.body.string()) as? JsonObject
