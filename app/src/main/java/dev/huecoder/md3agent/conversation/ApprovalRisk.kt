@@ -21,6 +21,7 @@ import dev.huecoder.md3agent.tools.system.RunPythonTool
 
 object ApprovalRisk {
     private val SENSITIVE_TOOLS = setOf(
+        dev.huecoder.md3agent.tools.system.SubagentsTool.NAME,
         RunCommandTool.NAME,
         dev.huecoder.md3agent.tools.system.RunTermuxCommandTool.NAME,
         RunPythonTool.NAME,

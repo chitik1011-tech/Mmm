@@ -36,6 +36,8 @@ data class ToolContext(
     val chatId: String,
     val provider: dev.huecoder.md3agent.data.settings.ProviderProfile? = null,
     val modelId: String? = null,
+    val delegatedTools: List<ToolSpec> = emptyList(),
+    val delegate: (suspend (dev.huecoder.md3agent.llm.ToolCall) -> ToolOutcome)? = null,
 )
 
 interface ContextualTool : Tool {

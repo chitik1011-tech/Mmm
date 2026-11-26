@@ -257,7 +257,26 @@ class ConversationRunner(
         for (call in round.toolCalls) {
             val outcome = if (isApproved(chatId, round, call, toolSettings)) {
                 publish(chatId, round.copy(runningCallIds = setOf(call.id)))
-                if (gate.admit(call.name)) tools.run(call, toolSettings, ToolContext(chatId, model.provider, model.modelId)) else ToolOutcome.error(LOCKED_REFUSAL)
+                if (gate.admit(call.name)) {
+                    val allowed = if (call.name == "run_subagents") tools.specs(toolSettings).filter {
+                        it.name in setOf("run_termux_command", "list_files", "read_file", "write_file") &&
+                            tools.permission(it.name, toolSettings) == ToolPermission.AUTO
+                    } else emptyList()
+                    val childContext = ToolContext(chatId, model.provider, model.modelId)
+                    val serial = kotlinx.coroutines.sync.Mutex()
+                    val context = childContext.copy(delegatedTools = allowed, delegate = { child ->
+                        serial.lock()
+                        try {
+                            if (allowed.none { it.name == child.name } ||
+                                tools.permission(child.name, toolSettings) != ToolPermission.AUTO ||
+                                !gate.admit(child.name)) ToolOutcome.denied()
+                            else tools.run(child, toolSettings, childContext)
+                        } finally {
+                            serial.unlock()
+                        }
+                    })
+                    tools.run(call, toolSettings, context)
+                } else ToolOutcome.error(LOCKED_REFUSAL)
             } else {
                 ToolOutcome.denied()
             }
