@@ -1,0 +1,33 @@
+name: Preview ARM64 APK
+on:
+  push:
+    branches: [feature/iishko-termux-subagents]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Prepare wrapper and SDK
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
+          sdkmanager 'platforms;android-37'
+      - name: Build ARM64 debug APK
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: md3-agent-arm64-preview
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+      - name: Run unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
