@@ -7,7 +7,7 @@ import org.junit.Test
 class ApiFormatTest {
     @Test
     fun `chat providers never offer elevenlabs and voice providers never offer anthropic`() {
-        assertEquals(listOf(ApiFormat.OPENAI, ApiFormat.ANTHROPIC, ApiFormat.GEMINI), ApiFormat.CHAT)
+        assertEquals(listOf(ApiFormat.OPENAI, ApiFormat.CHATGPT, ApiFormat.ANTHROPIC, ApiFormat.GEMINI), ApiFormat.CHAT)
         assertEquals(listOf(ApiFormat.OPENAI, ApiFormat.GEMINI, ApiFormat.ELEVENLABS), ApiFormat.VOICE)
     }
 
