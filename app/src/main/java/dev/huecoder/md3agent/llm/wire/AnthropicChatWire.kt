@@ -172,6 +172,7 @@ object AnthropicChatWire : ChatWire {
         private val open = HashMap<Int, OpenBlock>()
         private val late = mutableListOf<JsonObject>()
         private var bodyStarted = false
+        private var finishSeen = false
 
         override fun events(chunk: JsonObject): List<CompletionEvent> = when (chunk.text("type")) {
             "message_start" -> {
@@ -181,7 +182,13 @@ object AnthropicChatWire : ChatWire {
             "content_block_start" -> blockStart(chunk.int("index") ?: 0, chunk.obj("content_block"))
             "content_block_delta" -> blockDelta(chunk.int("index") ?: 0, chunk.obj("delta"))
             "content_block_stop" -> blockStop(chunk.int("index") ?: 0)
-            "message_delta" -> messageDelta(chunk)
+            "message_delta" -> messageDelta(chunk).also { events ->
+                if (events.any { it is CompletionEvent.Finished }) finishSeen = true
+            }
+            "message_stop" -> if (finishSeen) emptyList() else {
+                finishSeen = true
+                listOf(CompletionEvent.Finished(null))
+            }
             else -> emptyList()
         }
 
