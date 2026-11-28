@@ -45,7 +45,7 @@ class ChatCompletionClient(
             call.executeCancellable { response ->
                 if (!response.isSuccessful) throw httpError(response)
                 trace.onResponse()
-                emitServerSentEvents(response, wire.newStream(), trace)
+                emitServerSentEvents(response, wire.newStream(), trace, requestProvider.format == dev.huecoder.md3agent.data.settings.ApiFormat.OPENAI)
             }
         } catch (e: IOException) {
             if (call.isCanceled()) throw CancellationException("Stream cancelled", e)
@@ -55,7 +55,7 @@ class ChatCompletionClient(
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun FlowCollector<CompletionEvent>.emitServerSentEvents(response: Response, stream: ChatStream, trace: StreamTrace) {
+    private suspend fun FlowCollector<CompletionEvent>.emitServerSentEvents(response: Response, stream: ChatStream, trace: StreamTrace, allowImplicitFinish: Boolean) {
         val source = response.body.source()
         var finished = false
         var usageSeen = false
@@ -76,7 +76,10 @@ class ChatCompletionClient(
                 if (event is CompletionEvent.Usage) usageSeen = true
             }
         }
-        if (!finished) throw IOException("Response stream ended before completion")
+        if (!finished) {
+            if (allowImplicitFinish) emit(CompletionEvent.Finished(null))
+            else throw IOException("Response stream ended before completion")
+        }
     }
 
     private fun parseChunk(data: String): JsonObject {
